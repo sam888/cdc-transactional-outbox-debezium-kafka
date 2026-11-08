@@ -2,7 +2,7 @@
 
 **Postgres → Debezium (within Kafka Connect) → Kafka → Spring Boot**
 
-A hands-on reference project showing how to get changes out of a relational database reliably and react to them in a Spring Boot service. This repository holds the **platform** (Postgres, Kafka, Kafka Connect with Debezium, the SQL and the connector definitions) and the explanation of how the pieces fit together. The Spring Boot code, a producer that writes business events and a consumer that reacts to them, lives in a companion project, [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap), where both run in **one service** that you drive from Postman or `curl`. Everything runs on your laptop with Docker Compose.
+A hands-on reference project showing how to get changes out of a relational database reliably and react to them in a Spring Boot service. This repository holds the **platform** (Postgres, Kafka, Kafka Connect with Debezium, the SQL and the connector definitions) and the explanation of how the pieces fit together. The Spring Boot code, a producer that writes business events and a consumer that reacts to them, lives in a companion project, [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka), where both run in **one service** that you drive from Postman or `curl`. Everything runs on your laptop with Docker Compose.
 
 > **Disclaimer:** This project is a work in progress. It reflects my current PoC integration of CDC, Debezium, Kafka and the outbox pattern, and I am **not** claiming that it follows best practice or is production-ready. Some choices favour a clear demo over production hardening (demo credentials, a single Kafka broker, no authentication on Kafka or Connect). Please check anything you rely on against the official documentation, and if you spot a mistake or a better approach, an issue or pull request is very welcome.
 
@@ -182,7 +182,7 @@ You cannot fix this with retries or try/catch: the two systems (database and Kaf
 
 Both parts give you **at-least-once** delivery (an event may arrive more than once, so consumers must be **idempotent**) and **eventual consistency** (the other systems catch up milliseconds to seconds later, not instantly). That is why the consumer here de-duplicates with an `inbox` table and has retry and dead-letter handling.
 
-> **Where the Java code lives.** The producer and consumer are in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap), a reactive (WebFlux + R2DBC) Spring Boot service in which both halves run in *one* process so the whole loop can be driven from Postman. That project's `cdc-platform/` folder is a copy of this repository's platform.
+> **Where the Java code lives.** The producer and consumer are in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka), a reactive (WebFlux + R2DBC) Spring Boot service in which both halves run in *one* process so the whole loop can be driven from Postman. That project's `cdc-platform/` folder is a copy of this repository's platform.
 
 ### Why you would want this
 
@@ -214,7 +214,7 @@ For example, a DBA runs `UPDATE member SET address = '99 New Rd' WHERE id = 1` i
 
 The change itself is the signal:
 
-- **Cache eviction.** On any `member` change, evict `member:{id}` from Redis (the stale-data fix described above). In [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap) the consumer does exactly this against a real Redis cache.
+- **Cache eviction.** On any `member` change, evict `member:{id}` from Redis (the stale-data fix described above). In [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka) the consumer does exactly this against a real Redis cache.
 - **Real-time sync** to search indexes, data warehouses and read models, replacing batch jobs.
 - **Reacting to a change.** `member_status_id` moved to `SUSPENDED`: revoke sessions, send a notification.
 - **Audit trail** of every change, with before and after values.
@@ -337,7 +337,7 @@ Open Redis Commander at <http://localhost:8081> to see the keys. After the first
 From the companion project:
 
 ```bash
-git clone https://github.com/sam888/microservices-bootstrap.git
+git clone -b cdc-outbox-debezium-kafka --single-branch https://github.com/sam888/microservices-bootstrap.git
 cd microservices-bootstrap
 ./gradlew bootRun                     # http://localhost:9090
 ```
@@ -607,11 +607,11 @@ Postgres executes `db/` only when its data volume is empty, on the very first st
 Every script is re-runnable (`CREATE ... IF NOT EXISTS`; seeds skip rows that already exist), so running it on an up-to-date database changes nothing. The tables it adds are in no publication, so Debezium and the registered connectors are unaffected. If you would rather start from scratch: `docker compose --profile ui down -v` (**deletes all data**), `docker compose up -d`, then register the connectors again. In pgAdmin, refresh the tree (right-click **Tables**, then *Refresh*) after changes made elsewhere.
 
 
-The Spring Boot code is in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap) (see the next section).
+The Spring Boot code is in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka) (see the next section).
 
 ## What the Java code does
 
-Debezium needs **no Java code at all**: it is configuration (`connector/*.json`). The Java is the Spring Boot service around it, in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap), under `com.microservices.bootstrap.bank`. The two halves are separate packages that talk to each other through Postgres and Kafka, with one exception: `MemberController` (consumer package) also serves `POST /demo/bank/members` and hands it to the producer's `OnboardingService`, so that all member endpoints live in one class. To lift them into two deployables, that endpoint moves with the producer; everything else moves unchanged. They share one process here only so the whole loop can be driven from Postman.
+Debezium needs **no Java code at all**: it is configuration (`connector/*.json`). The Java is the Spring Boot service around it, in [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka), under `com.microservices.bootstrap.bank`. The two halves are separate packages that talk to each other through Postgres and Kafka, with one exception: `MemberController` (consumer package) also serves `POST /demo/bank/members` and hands it to the producer's `OnboardingService`, so that all member endpoints live in one class. To lift them into two deployables, that endpoint moves with the producer; everything else moves unchanged. They share one process here only so the whole loop can be driven from Postman.
 
 | Package | Role | Talks to |
 |---|---|---|
@@ -796,7 +796,7 @@ POST /demo/bank/members
 
 ## The companion app walkthrough (microservices-bootstrap)
 
-This chapter is the write-up to README of the companion app, [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap), so that it reads on its own there. It overlaps with the chapters above on purpose; where a topic is already covered in full, a short pointer links to it instead of repeating it. Paths such as `cdc-platform/` are relative to the microservices-bootstrap repository, where this platform is copied into a `cdc-platform/` folder.
+This chapter is the write-up to README of the companion app, [microservices-bootstrap](https://github.com/sam888/microservices-bootstrap/tree/cdc-outbox-debezium-kafka), so that it reads on its own there. It overlaps with the chapters above on purpose; where a topic is already covered in full, a short pointer links to it instead of repeating it. Paths such as `cdc-platform/` are relative to the microservices-bootstrap repository, where this platform is copied into a `cdc-platform/` folder.
 
 ### The problem this solves
 
